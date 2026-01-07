@@ -20,7 +20,6 @@ import {
   BankOutlined,
   RocketOutlined,
   SafetyCertificateOutlined,
-  DollarCircleOutlined,
   UsergroupAddOutlined,
   CalendarOutlined,
 } from "@ant-design/icons";
@@ -92,7 +91,6 @@ const labelStyle: React.CSSProperties = {
 interface TaxFormValues {
   income: number;
   dependents: number;
-  insurance: number;
   period: dayjs.Dayjs;
 }
 
@@ -128,9 +126,6 @@ const TaxCalculator: React.FC = () => {
       ? values.period.year()
       : currentMonth.year();
     const incomeStr = values.income.toLocaleString("vi-VN");
-    const insuranceStr = values.insurance
-      ? values.insurance.toLocaleString("vi-VN")
-      : "0";
 
     // 2. Tạo Prompt (Câu lệnh gửi AI)
     const promptText = `
@@ -142,20 +137,20 @@ const TaxCalculator: React.FC = () => {
       1. Xác định mức giảm trừ gia cảnh cho bản thân áp dụng tại năm ${selectedYear}.
       2. Xác định mức giảm trừ cho người phụ thuộc áp dụng tại năm ${selectedYear}.
       3. Áp dụng Biểu thuế lũy tiến từng phần tương ứng với thời điểm này.
+      4. Tự động ước tính các khoản bảo hiểm bắt buộc (BHXH, BHYT, BHTN) trên lương nếu người dùng không cung cấp số liệu cụ thể (giả định lương nhập vào là lương Gross).
 
       *** THÔNG TIN KHÁCH HÀNG ***
       - Kỳ tính thuế: ${selectedPeriod}
-      - Tổng thu nhập chịu thuế: ${incomeStr} VND
+      - Tổng thu nhập chịu thuế (Gross): ${incomeStr} VND
       - Số người phụ thuộc: ${values.dependents} người
-      - Bảo hiểm bắt buộc đã trừ: ${insuranceStr} VND
 
       *** YÊU CẦU TRÌNH BÀY (MARKDOWN) ***
       Hãy lập một báo cáo chuyên nghiệp:
       1. **Căn cứ pháp lý**: Ghi rõ văn bản luật hoặc mức giảm trừ bạn đang áp dụng cho kỳ ${selectedPeriod}.
       2. **Tóm tắt hồ sơ**: Liệt kê lại thu nhập, kỳ tính thuế và số người phụ thuộc.
-      3. **Diễn giải chi tiết**: Trình bày từng bước tính toán.
-      4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table gồm các cột (Bậc, Khoảng thu nhập, Thuế suất, Số tiền).
-      5. **Kết luận**: Tổng số tiền thuế phải nộp (In đậm, size lớn).
+      3. **Diễn giải chi tiết**: Trình bày từng bước tính toán (bao gồm bước trừ bảo hiểm bắt buộc ước tính).
+      4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table gồm các cột (Bậc, Khoảng thu nhập tính thuế, Thuế suất, Số tiền).
+      5. **Kết luận**: Tổng số tiền thuế phải nộp (In đậm, size lớn) và Lương Net (Sau khi trừ thuế và bảo hiểm).
     `;
 
     try {
@@ -242,7 +237,6 @@ const TaxCalculator: React.FC = () => {
                 onFinish={onFinish}
                 initialValues={{
                   dependents: 0,
-                  insurance: 0,
                   period: currentMonth,
                 }}
                 size="large"
@@ -309,7 +303,7 @@ const TaxCalculator: React.FC = () => {
                   </Row>
                 </div>
 
-                {/* NHÓM 2: TÀI CHÍNH (THU NHẬP & GIẢM TRỪ) */}
+                {/* NHÓM 2: TÀI CHÍNH (THU NHẬP) */}
                 <div
                   style={{
                     ...sectionStyle,
@@ -335,6 +329,7 @@ const TaxCalculator: React.FC = () => {
                         rules={[
                           { required: true, message: "Vui lòng nhập thu nhập" },
                         ]}
+                        style={{ marginBottom: 0 }}
                       >
                         <InputNumber
                           style={{
@@ -364,34 +359,6 @@ const TaxCalculator: React.FC = () => {
                           }
                           placeholder="Ví dụ: 30,000,000"
                           variant="filled"
-                        />
-                      </Form.Item>
-                    </Col>
-
-                    {/* Bảo hiểm */}
-                    <Col xs={24}>
-                      <span style={labelStyle}>
-                        4. Các khoản bảo hiểm bắt buộc đã đóng
-                      </span>
-                      <Form.Item name="insurance" style={{ marginBottom: 0 }}>
-                        <InputNumber
-                          style={{
-                            width: "100%",
-                            height: 50,
-                            borderRadius: 8,
-                            paddingTop: 4,
-                          }}
-                          formatter={(v) =>
-                            `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                          }
-                          parser={(v) => v?.replace(/\$\s?|(,*)/g, "") as any}
-                          prefix={
-                            <DollarCircleOutlined
-                              style={{ color: "#a0aec0", marginRight: 8 }}
-                            />
-                          }
-                          placeholder="Tổng tiền BHXH, BHYT, BHTN (nếu có)"
-                          addonAfter="VND"
                         />
                       </Form.Item>
                     </Col>
