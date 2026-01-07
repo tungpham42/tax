@@ -14,6 +14,7 @@ import {
   Col,
   Badge,
   Divider,
+  DatePicker,
 } from "antd";
 import {
   BankOutlined,
@@ -21,21 +22,31 @@ import {
   SafetyCertificateOutlined,
   DollarCircleOutlined,
   UsergroupAddOutlined,
+  CalendarOutlined,
 } from "@ant-design/icons";
 import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import remarkGfm from "remark-gfm";
-import "./App.css"; // Đảm bảo đã import CSS
+import dayjs from "dayjs";
+import "./App.css";
+
+// [MỚI] Import locale Tiếng Việt cho Ant Design và Dayjs
+import viVN from "antd/locale/vi_VN";
+import "dayjs/locale/vi";
+
+// Thiết lập ngôn ngữ mặc định cho dayjs
+dayjs.locale("vi");
 
 const { Title, Text } = Typography;
 const { Content, Footer } = Layout;
 
-// Theme config cho Ant Design
+// --- CẤU HÌNH GIAO DIỆN (THEME & STYLE) ---
+
 const themeConfig = {
   token: {
     fontFamily: "'Lexend Deca', sans-serif",
-    colorPrimary: "#1a365d", // Màu xanh than
+    colorPrimary: "#1a365d",
     borderRadius: 8,
     colorTextHeading: "#1a365d",
   },
@@ -54,13 +65,35 @@ const themeConfig = {
     InputNumber: {
       controlHeightLG: 45,
     },
+    DatePicker: {
+      controlHeightLG: 45,
+    },
   },
 };
+
+// Style cho các khối nhập liệu
+const sectionStyle: React.CSSProperties = {
+  background: "#f8fafc", // Xám xanh nhạt
+  padding: "24px",
+  borderRadius: "12px",
+  border: "1px solid #edf2f7",
+  marginBottom: "24px",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontWeight: 600,
+  color: "#2d3748",
+  marginBottom: "8px",
+  display: "block",
+};
+
+// --- ĐỊNH NGHĨA KIỂU DỮ LIỆU ---
 
 interface TaxFormValues {
   income: number;
   dependents: number;
   insurance: number;
+  period: dayjs.Dayjs;
 }
 
 interface ApiResponse {
@@ -68,62 +101,91 @@ interface ApiResponse {
   used_model: string;
 }
 
+// --- COMPONENT CHÍNH ---
+
 const TaxCalculator: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState<boolean>(false);
   const [result, setResult] = useState<string>("");
   const [usedModel, setUsedModel] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
-  const currentYear = new Date().getFullYear();
+
+  // Mặc định chọn tháng hiện tại
+  const currentMonth = dayjs();
+
+  // --- LOGIC XỬ LÝ ---
   const onFinish = async (values: TaxFormValues) => {
     setLoading(true);
     setError(null);
     setResult("");
+    setUsedModel("");
 
+    // 1. Chuẩn bị dữ liệu
+    const selectedPeriod = values.period
+      ? values.period.format("MM/YYYY")
+      : currentMonth.format("MM/YYYY");
+    const selectedYear = values.period
+      ? values.period.year()
+      : currentMonth.year();
     const incomeStr = values.income.toLocaleString("vi-VN");
-    const insuranceStr = values.insurance.toLocaleString("vi-VN");
+    const insuranceStr = values.insurance
+      ? values.insurance.toLocaleString("vi-VN")
+      : "0";
+
+    // 2. Tạo Prompt (Câu lệnh gửi AI)
     const promptText = `
       Bạn là chuyên gia tư vấn thuế cao cấp (Senior Tax Consultant) tại Việt Nam. 
-      Nhiệm vụ của bạn là tính toán Thuế Thu Nhập Cá Nhân (TNCN) cho kỳ tính thuế năm ${currentYear}.
+      Nhiệm vụ của bạn là tính toán Thuế Thu Nhập Cá Nhân (TNCN) cho kỳ tính thuế: **${selectedPeriod}**.
 
       *** YÊU CẦU VỀ DỮ LIỆU PHÁP LÝ (QUAN TRỌNG) ***
-      Thay vì sử dụng các con số định sẵn, hãy tự xác định các quy định pháp luật mới nhất về thuế TNCN đang có hiệu lực tại Việt Nam trong năm ${currentYear}:
-      1. Xác định mức giảm trừ gia cảnh cho bản thân hiện hành.
-      2. Xác định mức giảm trừ cho người phụ thuộc hiện hành.
-      3. Áp dụng Biểu thuế lũy tiến từng phần hiện hành (xác định rõ số bậc và mức thuế suất tương ứng).
+      Hãy xác định chính xác quy định pháp luật về thuế TNCN có hiệu lực tại thời điểm **${selectedPeriod}**:
+      1. Xác định mức giảm trừ gia cảnh cho bản thân áp dụng tại năm ${selectedYear}.
+      2. Xác định mức giảm trừ cho người phụ thuộc áp dụng tại năm ${selectedYear}.
+      3. Áp dụng Biểu thuế lũy tiến từng phần tương ứng với thời điểm này.
 
       *** THÔNG TIN KHÁCH HÀNG ***
+      - Kỳ tính thuế: ${selectedPeriod}
       - Tổng thu nhập chịu thuế: ${incomeStr} VND
       - Số người phụ thuộc: ${values.dependents} người
       - Bảo hiểm bắt buộc đã trừ: ${insuranceStr} VND
 
       *** YÊU CẦU TRÌNH BÀY (MARKDOWN) ***
-      Hãy lập một báo cáo chuyên nghiệp, minh bạch:
-      1. **Căn cứ áp dụng**: Ghi rõ mức giảm trừ bản thân, giảm trừ người phụ thuộc và biểu thuế bạn đang sử dụng để tính toán (Ví dụ: Theo Nghị quyết số... hoặc Quy định hiện hành năm ${currentYear}).
-      2. **Tóm tắt hồ sơ**: Liệt kê lại thu nhập và số người phụ thuộc.
-      3. **Diễn giải chi tiết**: Trình bày từng bước (Thu nhập chịu thuế -> Tổng các khoản giảm trừ -> Thu nhập tính thuế).
-      4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table gồm các cột (Bậc, Khoảng thu nhập tính thuế, Thuế suất, Số tiền thuế).
+      Hãy lập một báo cáo chuyên nghiệp:
+      1. **Căn cứ pháp lý**: Ghi rõ văn bản luật hoặc mức giảm trừ bạn đang áp dụng cho kỳ ${selectedPeriod}.
+      2. **Tóm tắt hồ sơ**: Liệt kê lại thu nhập, kỳ tính thuế và số người phụ thuộc.
+      3. **Diễn giải chi tiết**: Trình bày từng bước tính toán.
+      4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table gồm các cột (Bậc, Khoảng thu nhập, Thuế suất, Số tiền).
       5. **Kết luận**: Tổng số tiền thuế phải nộp (In đậm, size lớn).
     `;
 
     try {
+      // 3. Gọi API
       const response = await axios.post<ApiResponse>(
-        "https://groqprompt.netlify.app/",
-        { prompt: promptText }
+        "https://groqprompt.netlify.app/api/ai",
+        { prompt: promptText },
+        { headers: { "Content-Type": "application/json" } }
       );
-      if (response.data.result) setResult(response.data.result);
-      if (response.data.used_model) setUsedModel(response.data.used_model);
+
+      if (response.data) {
+        setResult(response.data.result);
+        setUsedModel(response.data.used_model);
+      }
     } catch (err) {
-      setError("Hệ thống đang bận. Vui lòng thử lại sau giây lát.");
+      setError(
+        "Không thể kết nối đến server tính toán. Vui lòng kiểm tra lại mạng hoặc cấu hình API."
+      );
+      console.error(err);
     } finally {
       setLoading(false);
     }
   };
 
+  // --- GIAO DIỆN (JSX) ---
   return (
-    <ConfigProvider theme={themeConfig}>
+    // [CẬP NHẬT] Thêm prop locale={viVN} vào ConfigProvider
+    <ConfigProvider theme={themeConfig} locale={viVN}>
       <Layout style={{ minHeight: "100vh", background: "transparent" }}>
-        {/* Header Section */}
+        {/* Header - Thiết kế vát chéo */}
         <div
           style={{
             background: "#1a365d",
@@ -147,7 +209,7 @@ const TaxCalculator: React.FC = () => {
               display: "block",
             }}
           >
-            Hỗ trợ tính toán chính xác theo Luật Thuế {currentYear}
+            Hỗ trợ tính toán chính xác theo từng kỳ thuế
           </Text>
         </div>
 
@@ -162,122 +224,218 @@ const TaxCalculator: React.FC = () => {
               display: "flex",
             }}
           >
-            {/* Input Section */}
+            {/* --- KHU VỰC NHẬP LIỆU (REDESIGNED) --- */}
             <Card
               className="legal-paper"
               title={
-                <>
-                  <SafetyCertificateOutlined style={{ color: "#1a365d" }} />{" "}
-                  Thông Tin Khách Hàng
-                </>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <SafetyCertificateOutlined
+                    style={{ color: "#1a365d", fontSize: 20 }}
+                  />
+                  <span style={{ fontSize: 18 }}>Thông Tin Kê Khai</span>
+                </div>
               }
             >
-              <Alert
-                title="Cập nhật chính sách mới"
-                description={`Hệ thống đã tự động áp dụng mức giảm trừ gia cảnh mới cho kỳ tính thuế ${currentYear}.`}
-                type="info"
-                showIcon
-                style={{
-                  marginBottom: 24,
-                  border: "1px solid #91d5ff",
-                  background: "#e6f7ff",
-                }}
-              />
-
               <Form
                 form={form}
                 layout="vertical"
                 onFinish={onFinish}
-                initialValues={{ dependents: 0, insurance: 0 }}
+                initialValues={{
+                  dependents: 0,
+                  insurance: 0,
+                  period: currentMonth,
+                }}
                 size="large"
               >
-                <Row gutter={24}>
-                  <Col xs={24} md={12}>
-                    <Form.Item
-                      label="Tổng thu nhập chịu thuế (VND)"
-                      name="income"
-                      rules={[
-                        { required: true, message: "Vui lòng nhập thu nhập" },
-                      ]}
-                    >
-                      <InputNumber
-                        style={{ width: "100%" }}
-                        formatter={(v) =>
-                          `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                        }
-                        parser={(v) => v?.replace(/\$\s?|(,*)/g, "") as any}
-                        addonAfter={<DollarCircleOutlined />}
-                        placeholder="VD: 30,000,000"
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col xs={24} md={12}>
-                    <Form.Item
-                      label="Bảo hiểm bắt buộc đã đóng (VND)"
-                      name="insurance"
-                    >
-                      <InputNumber
-                        style={{ width: "100%" }}
-                        formatter={(v) =>
-                          `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
-                        }
-                        parser={(v) => v?.replace(/\$\s?|(,*)/g, "") as any}
-                        placeholder="VD: 1,500,000"
-                      />
-                    </Form.Item>
-                  </Col>
-                </Row>
+                {/* NHÓM 1: CẤU HÌNH CƠ BẢN (THỜI GIAN & CON NGƯỜI) */}
+                <div style={sectionStyle}>
+                  <Row gutter={24}>
+                    <Col xs={24} md={12}>
+                      <span style={labelStyle}>1. Kỳ tính thuế</span>
+                      <Form.Item
+                        name="period"
+                        rules={[
+                          { required: true, message: "Vui lòng chọn kỳ thuế" },
+                        ]}
+                        style={{ marginBottom: 0 }}
+                      >
+                        <DatePicker
+                          picker="month"
+                          format="MM/YYYY" // Định dạng hiển thị kiểu Việt Nam
+                          style={{ width: "100%", height: 50, borderRadius: 8 }}
+                          placeholder="Chọn tháng/năm"
+                          suffixIcon={
+                            <CalendarOutlined style={{ color: "#1a365d" }} />
+                          }
+                        />
+                      </Form.Item>
+                      <Text
+                        type="secondary"
+                        style={{ fontSize: 12, marginTop: 4, display: "block" }}
+                      >
+                        *Hệ thống tự động áp dụng luật thuế tương ứng thời điểm
+                        này.
+                      </Text>
+                    </Col>
 
-                <Row gutter={24}>
-                  <Col xs={24} md={12}>
-                    <Form.Item label="Số người phụ thuộc" name="dependents">
-                      <InputNumber
-                        style={{ width: "100%" }}
-                        min={0}
-                        max={20}
-                        addonBefore={<UsergroupAddOutlined />}
-                      />
-                    </Form.Item>
-                  </Col>
-                  <Col
-                    xs={24}
-                    md={12}
-                    style={{ display: "flex", alignItems: "end" }}
-                  >
-                    <Form.Item style={{ width: "100%" }}>
-                      <Button
-                        type="primary"
-                        htmlType="submit"
-                        icon={<RocketOutlined />}
-                        loading={loading}
-                        block
+                    <Col xs={24} md={12}>
+                      <span style={labelStyle}>2. Người phụ thuộc</span>
+                      <Form.Item name="dependents" style={{ marginBottom: 0 }}>
+                        <InputNumber
+                          style={{
+                            width: "100%",
+                            height: 50,
+                            borderRadius: 8,
+                            paddingTop: 4,
+                          }}
+                          min={0}
+                          max={20}
+                          prefix={
+                            <UsergroupAddOutlined
+                              style={{ color: "#a0aec0", marginRight: 8 }}
+                            />
+                          }
+                          placeholder="Số lượng (người)"
+                        />
+                      </Form.Item>
+                      <Text
+                        type="secondary"
+                        style={{ fontSize: 12, marginTop: 4, display: "block" }}
+                      >
+                        *Giảm trừ theo luật hiện hành (VD: 4.4tr hoặc
+                        6.2tr/người).
+                      </Text>
+                    </Col>
+                  </Row>
+                </div>
+
+                {/* NHÓM 2: TÀI CHÍNH (THU NHẬP & GIẢM TRỪ) */}
+                <div
+                  style={{
+                    ...sectionStyle,
+                    background: "#fff",
+                    border: "1px dashed #cbd5e0",
+                  }}
+                >
+                  <Row gutter={24}>
+                    {/* Thu nhập - Hero Input */}
+                    <Col xs={24}>
+                      <span
                         style={{
-                          background:
-                            "linear-gradient(90deg, #1a365d 0%, #2a4365 100%)",
-                          border: "none",
-                          boxShadow: "0 4px 14px 0 rgba(26, 54, 93, 0.39)",
+                          ...labelStyle,
+                          fontSize: 16,
+                          color: "#1a365d",
                         }}
                       >
-                        Lập Bảng Tính Thuế
-                      </Button>
-                    </Form.Item>
-                  </Col>
-                </Row>
+                        3. Tổng thu nhập chịu thuế (VND){" "}
+                        <span style={{ color: "red" }}>*</span>
+                      </span>
+                      <Form.Item
+                        name="income"
+                        rules={[
+                          { required: true, message: "Vui lòng nhập thu nhập" },
+                        ]}
+                      >
+                        <InputNumber
+                          style={{
+                            width: "100%",
+                            height: 60,
+                            fontSize: 24,
+                            fontWeight: 600,
+                            color: "#1a365d",
+                            borderRadius: 8,
+                            paddingTop: 8,
+                            border: "2px solid #e2e8f0",
+                          }}
+                          formatter={(v) =>
+                            `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                          }
+                          parser={(v) => v?.replace(/\$\s?|(,*)/g, "") as any}
+                          prefix={
+                            <span
+                              style={{
+                                color: "#a0aec0",
+                                fontSize: 20,
+                                marginRight: 10,
+                              }}
+                            >
+                              ₫
+                            </span>
+                          }
+                          placeholder="Ví dụ: 30,000,000"
+                          variant="filled"
+                        />
+                      </Form.Item>
+                    </Col>
+
+                    {/* Bảo hiểm */}
+                    <Col xs={24}>
+                      <span style={labelStyle}>
+                        4. Các khoản bảo hiểm bắt buộc đã đóng
+                      </span>
+                      <Form.Item name="insurance" style={{ marginBottom: 0 }}>
+                        <InputNumber
+                          style={{
+                            width: "100%",
+                            height: 50,
+                            borderRadius: 8,
+                            paddingTop: 4,
+                          }}
+                          formatter={(v) =>
+                            `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ",")
+                          }
+                          parser={(v) => v?.replace(/\$\s?|(,*)/g, "") as any}
+                          prefix={
+                            <DollarCircleOutlined
+                              style={{ color: "#a0aec0", marginRight: 8 }}
+                            />
+                          }
+                          placeholder="Tổng tiền BHXH, BHYT, BHTN (nếu có)"
+                          addonAfter="VND"
+                        />
+                      </Form.Item>
+                    </Col>
+                  </Row>
+                </div>
+
+                {/* Submit Button */}
+                <Form.Item style={{ marginTop: 30, marginBottom: 0 }}>
+                  <Button
+                    type="primary"
+                    htmlType="submit"
+                    icon={<RocketOutlined />}
+                    loading={loading}
+                    block
+                    size="large"
+                    style={{
+                      height: 55,
+                      fontSize: 18,
+                      borderRadius: 12,
+                      background:
+                        "linear-gradient(135deg, #1a365d 0%, #2a4365 100%)",
+                      boxShadow: "0 10px 20px -10px rgba(26, 54, 93, 0.5)",
+                      border: "none",
+                    }}
+                  >
+                    {loading ? "ĐANG TÍNH TOÁN..." : "TÍNH THUẾ NGAY"}
+                  </Button>
+                </Form.Item>
               </Form>
             </Card>
 
-            {/* Error Message */}
+            {/* --- KHU VỰC HIỂN THỊ LỖI --- */}
             {error && (
               <Alert
-                title="Thông báo lỗi"
+                message="Thông báo lỗi"
                 description={error}
                 type="error"
                 showIcon
                 closable
+                style={{ borderRadius: 8 }}
               />
             )}
 
-            {/* Result Section */}
+            {/* --- KHU VỰC KẾT QUẢ (REPORT) --- */}
             {result && (
               <div className="fade-in-up">
                 <Badge.Ribbon text="Official Report" color="#c5a572">
@@ -297,7 +455,6 @@ const TaxCalculator: React.FC = () => {
                           remarkPlugins={[remarkGfm]}
                           rehypePlugins={[rehypeRaw]}
                           components={{
-                            // Giữ nguyên logic render components nhưng CSS đã được xử lý ở App.css
                             table: ({ node, ...props }) => <table {...props} />,
                             th: ({ node, ...props }) => <th {...props} />,
                             td: ({ node, ...props }) => <td {...props} />,
@@ -317,7 +474,9 @@ const TaxCalculator: React.FC = () => {
                         }}
                       >
                         <span>Mô hình xử lý: {usedModel}</span>
-                        <span>{new Date().toLocaleDateString("vi-VN")}</span>
+                        <span>
+                          Ngày lập: {new Date().toLocaleDateString("vi-VN")}
+                        </span>
                       </div>
                     </Spin>
                   </Card>
@@ -334,7 +493,8 @@ const TaxCalculator: React.FC = () => {
             color: "#718096",
           }}
         >
-          Vietnam Personal Income Tax Calculator ©{currentYear} <br />
+          Vietnam Personal Income Tax Calculator ©{new Date().getFullYear()}{" "}
+          <br />
           <Text type="secondary" style={{ fontSize: 12 }}>
             Designed for Professionals
           </Text>
