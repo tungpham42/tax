@@ -114,6 +114,24 @@ const TaxCalculator: React.FC = () => {
   // Mặc định chọn tháng hiện tại
   const currentMonth = dayjs();
 
+  // Hàm chuẩn hóa dữ liệu từ AI để hiển thị Toán học đẹp hơn
+  const preprocessContent = (content: string) => {
+    if (!content) return "";
+
+    return (
+      content
+        // Thay thế block math \[ ... \] thành $$ ... $$
+        .replace(/\\\[/g, "$$")
+        .replace(/\\\]/g, "$$")
+        // Thay thế inline math \( ... \) thành $ ... $
+        .replace(/\\\(/g, "$")
+        .replace(/\\\)/g, "$")
+        // Xử lý trường hợp AI trả về dấu ngoặc vuông đơn lẻ chứa công thức [ ... ]
+        .replace(/^\[ /gm, "$$ ")
+        .replace(/ \]$/gm, " $$")
+    );
+  };
+
   // --- LOGIC XỬ LÝ ---
   const onFinish = async (values: TaxFormValues) => {
     setLoading(true);
@@ -154,6 +172,10 @@ const TaxCalculator: React.FC = () => {
       3. **Diễn giải chi tiết**: Trình bày từng bước tính toán (bao gồm bước trừ bảo hiểm bắt buộc ước tính).
       4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table gồm các cột (Bậc, Khoảng thu nhập tính thuế, Thuế suất, Số tiền).
       5. **Kết luận**: Tổng số tiền thuế phải nộp (In đậm, size lớn) và Lương Net (Sau khi trừ thuế và bảo hiểm).
+      
+      [QUAN TRỌNG] Quy tắc hiển thị công thức toán học:
+      - BẮT BUỘC sử dụng dấu $$ bao quanh công thức (Ví dụ: $$ a + b = c $$).
+      - TUYỆT ĐỐI KHÔNG sử dụng ký hiệu \\[ hoặc \\] hoặc ( ).
     `;
 
     try {
@@ -430,7 +452,7 @@ const TaxCalculator: React.FC = () => {
                             td: ({ node, ...props }) => <td {...props} />,
                           }}
                         >
-                          {result}
+                          {preprocessContent(result)}
                         </ReactMarkdown>
                       </div>
 
