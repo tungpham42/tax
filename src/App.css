@@ -1,0 +1,119 @@
+/* App.css */
+@import url("https://fonts.googleapis.com/css2?family=Lexend+Deca:wght@200;300;400;500;600;700&display=swap");
+
+:root {
+  --primary-color: #1a365d; /* Xanh than pháp luật */
+  --accent-color: #c5a572; /* Vàng đồng tài chính */
+  --bg-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  --text-color: #2d3748;
+}
+
+body {
+  font-family: "Lexend Deca", sans-serif !important;
+  background: var(--bg-gradient);
+  margin: 0;
+  color: var(--text-color);
+}
+
+/* Tùy chỉnh thanh cuộn */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e0;
+  border-radius: 4px;
+}
+
+/* Hiệu ứng cho Card kết quả (Giấy tờ pháp lý) */
+.legal-paper {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.legal-paper::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: linear-gradient(
+    90deg,
+    var(--primary-color) 0%,
+    var(--accent-color) 100%
+  );
+}
+
+/* Animation nhẹ cho kết quả */
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Markdown Table Styling - Giao diện bảng lương chuyên nghiệp */
+.markdown-body table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 20px 0;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+.markdown-body th {
+  background-color: var(--primary-color) !important;
+  color: #fff !important;
+  font-weight: 500;
+  padding: 16px !important;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  border: none !important;
+}
+
+.markdown-body td {
+  padding: 14px 16px !important;
+  border-bottom: 1px solid #edf2f7 !important;
+  color: #4a5568;
+}
+
+.markdown-body tr:last-child td {
+  border-bottom: none !important;
+}
+
+.markdown-body tr:nth-child(even) {
+  background-color: #f8fafc;
+}
+
+.markdown-body h3 {
+  color: var(--primary-color);
+  border-bottom: 2px solid var(--accent-color);
+  padding-bottom: 8px;
+  margin-top: 30px;
+  font-size: 1.25rem;
+}
+
+.markdown-body strong {
+  color: var(--primary-color);
+  font-weight: 700;
+}
+
+.markdown-body ul {
+  padding-left: 20px;
+  color: #4a5568;
+}
