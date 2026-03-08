@@ -33,7 +33,7 @@ import "katex/dist/katex.min.css";
 import dayjs from "dayjs";
 import "./App.css";
 
-// [MỚI] Import locale Tiếng Việt cho Ant Design và Dayjs
+// Import locale Tiếng Việt cho Ant Design và Dayjs
 import viVN from "antd/locale/vi_VN";
 import "dayjs/locale/vi";
 
@@ -73,9 +73,8 @@ const themeConfig = {
   },
 };
 
-// Style cho các khối nhập liệu
 const sectionStyle: React.CSSProperties = {
-  background: "#f8fafc", // Xám xanh nhạt
+  background: "#f8fafc",
   padding: "24px",
   borderRadius: "12px",
   border: "1px solid #edf2f7",
@@ -102,6 +101,16 @@ interface ApiResponse {
   used_model: string;
 }
 
+interface TavilyResponse {
+  answer?: string;
+  results: Array<{
+    title: string;
+    url: string;
+    content: string;
+    score: number;
+  }>;
+}
+
 // --- COMPONENT CHÍNH ---
 
 const TaxCalculator: React.FC = () => {
@@ -110,36 +119,29 @@ const TaxCalculator: React.FC = () => {
   const [result, setResult] = useState<string>("");
   const [usedModel, setUsedModel] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [searchStatus, setSearchStatus] = useState<string>("");
 
-  // Mặc định chọn tháng hiện tại
   const currentMonth = dayjs();
 
-  // Hàm chuẩn hóa dữ liệu từ AI để hiển thị Toán học đẹp hơn
   const preprocessContent = (content: string) => {
     if (!content) return "";
-
-    return (
-      content
-        // Thay thế block math \[ ... \] thành $$ ... $$
-        .replace(/\\\[/g, "$$")
-        .replace(/\\\]/g, "$$")
-        // Thay thế inline math \( ... \) thành $ ... $
-        .replace(/\\\(/g, "$")
-        .replace(/\\\)/g, "$")
-        // Xử lý trường hợp AI trả về dấu ngoặc vuông đơn lẻ chứa công thức [ ... ]
-        .replace(/^\[ /gm, "$$ ")
-        .replace(/ \]$/gm, " $$")
-    );
+    return content
+      .replace(/\\\[/g, "$$")
+      .replace(/\\\]/g, "$$")
+      .replace(/\\\(/g, "$")
+      .replace(/\\\)/g, "$")
+      .replace(/^\[ /gm, "$$ ")
+      .replace(/ \]$/gm, " $$");
   };
 
-  // --- LOGIC XỬ LÝ ---
+  // --- LOGIC XỬ LÝ CHÍNH ---
   const onFinish = async (values: TaxFormValues) => {
     setLoading(true);
     setError(null);
     setResult("");
     setUsedModel("");
+    setSearchStatus("Đang tra cứu luật thuế mới nhất từ Internet...");
 
-    // 1. Chuẩn bị dữ liệu
     const selectedPeriod = values.period
       ? values.period.format("MM/YYYY")
       : currentMonth.format("MM/YYYY");
@@ -148,17 +150,55 @@ const TaxCalculator: React.FC = () => {
       : currentMonth.year();
     const incomeStr = values.income.toLocaleString("vi-VN");
 
-    // 2. Tạo Prompt (Câu lệnh gửi AI)
+    let liveContext = "";
+
+    // BƯỚC 1: Gọi Tavily API để lấy thông tin luật thuế cập nhật nhất
+    try {
+      // TODO: Điền API Key của bạn vào đây. Trong thực tế, nên đưa key này ra Backend.
+      const TAVILY_API_KEY = process.env.REACT_APP_TAVILY_API_KEY;
+      const searchQuery = `Luật thuế TNCN mới nhất năm ${selectedYear} Việt Nam mức giảm trừ gia cảnh, người phụ thuộc và biểu thuế lũy tiến từng phần`;
+
+      const tavilyRes = await axios.post<TavilyResponse>(
+        "https://api.tavily.com/search",
+        {
+          api_key: TAVILY_API_KEY,
+          query: searchQuery,
+          search_depth: "advanced",
+          include_answer: true,
+          max_results: 3,
+        },
+      );
+
+      if (tavilyRes.data.answer) {
+        liveContext = tavilyRes.data.answer;
+      } else if (tavilyRes.data.results && tavilyRes.data.results.length > 0) {
+        liveContext = tavilyRes.data.results.map((r) => r.content).join("\n\n");
+      } else {
+        throw new Error("Không tìm thấy dữ liệu từ Internet");
+      }
+
+      setSearchStatus("Đang phân tích và tính toán thuế...");
+    } catch (err) {
+      console.error("Tavily API Error:", err);
+      setError(
+        "Không thể tra cứu luật thuế mới nhất qua Tavily. Vui lòng kiểm tra lại API Key hoặc kết nối mạng.",
+      );
+      setLoading(false);
+      setSearchStatus("");
+      return;
+    }
+
+    // BƯỚC 2: Tạo Prompt nhồi Live Context vào cho AI
     const promptText = `
       Bạn là chuyên gia tư vấn thuế cao cấp (Senior Tax Consultant) tại Việt Nam. 
-      Nhiệm vụ của bạn là tính toán Thuế Thu Nhập Cá Nhân (TNCN) cho kỳ tính thuế: **${selectedPeriod}**.
+      Nhiệm vụ của bạn là tính toán chính xác Thuế Thu Nhập Cá Nhân (TNCN) cho kỳ tính thuế: **${selectedPeriod}**.
 
-      *** YÊU CẦU VỀ DỮ LIỆU PHÁP LÝ (QUAN TRỌNG) ***
-      Hãy xác định chính xác quy định pháp luật về thuế TNCN có hiệu lực tại thời điểm **${selectedPeriod}**:
-      1. Xác định mức giảm trừ gia cảnh cho bản thân áp dụng tại năm ${selectedYear}.
-      2. Xác định mức giảm trừ cho người phụ thuộc áp dụng tại năm ${selectedYear}.
-      3. Áp dụng Biểu thuế lũy tiến từng phần tương ứng với thời điểm này.
-      4. Tự động ước tính các khoản bảo hiểm bắt buộc (BHXH, BHYT, BHTN) trên lương nếu người dùng không cung cấp số liệu cụ thể (giả định lương nhập vào là lương Gross).
+      *** DỮ LIỆU PHÁP LÝ THỰC TẾ (LIVE CONTEXT TỪ INTERNET) ***
+      Bạn BẮT BUỘC phải sử dụng các thông tin luật thuế sau đây (vừa được tra cứu trên mạng cho năm ${selectedYear}) để tính toán, tuyệt đối KHÔNG ĐƯỢC tự bịa số liệu hay dùng dữ liệu cũ:
+      ---
+      ${liveContext}
+      ---
+      *Lưu ý: Nếu dữ liệu trên không đề cập chi tiết đến tỷ lệ trích nộp bảo hiểm bắt buộc đối với người lao động, hãy mặc định trừ 10,5% trên tổng thu nhập (BHXH 8%, BHYT 1,5%, BHTN 1%).*
 
       *** THÔNG TIN KHÁCH HÀNG ***
       - Kỳ tính thuế: ${selectedPeriod}
@@ -167,23 +207,23 @@ const TaxCalculator: React.FC = () => {
 
       *** YÊU CẦU TRÌNH BÀY (MARKDOWN) ***
       Hãy lập một báo cáo chuyên nghiệp:
-      1. **Căn cứ pháp lý**: Ghi rõ văn bản luật hoặc mức giảm trừ bạn đang áp dụng cho kỳ ${selectedPeriod}.
+      1. **Căn cứ pháp lý**: Tóm tắt các mức giảm trừ và quy định thuế bạn vừa trích xuất được từ dữ liệu Internet ở trên.
       2. **Tóm tắt hồ sơ**: Liệt kê lại thu nhập, kỳ tính thuế và số người phụ thuộc.
-      3. **Diễn giải chi tiết**: Trình bày từng bước tính toán (bao gồm bước trừ bảo hiểm bắt buộc ước tính).
-      4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table gồm các cột (Bậc, Khoảng thu nhập tính thuế, Thuế suất, Số tiền).
-      5. **Kết luận**: Tổng số tiền thuế phải nộp (In đậm, size lớn) và Lương Net (Sau khi trừ thuế và bảo hiểm).
+      3. **Diễn giải chi tiết**: Trình bày từng bước tính toán (bao gồm bước trừ bảo hiểm bắt buộc).
+      4. **Bảng tính thuế chi tiết (Bắt buộc)**: Vẽ Table Markdown gồm các cột (Bậc, Khoảng thu nhập tính thuế, Thuế suất, Số tiền).
+      5. **Kết luận**: Tổng số tiền thuế phải nộp (In đậm, size lớn) và Lương Net cuối cùng.
       
       [QUAN TRỌNG] Quy tắc hiển thị công thức toán học:
       - BẮT BUỘC sử dụng dấu $$ bao quanh công thức (Ví dụ: $$ a + b = c $$).
       - TUYỆT ĐỐI KHÔNG sử dụng ký hiệu \\[ hoặc \\] hoặc ( ).
     `;
 
+    // BƯỚC 3: Gọi API AI (Netlify Function / Groq)
     try {
-      // 3. Gọi API
       const response = await axios.post<ApiResponse>(
         "https://groqprompt.netlify.app/api/ai",
         { prompt: promptText },
-        { headers: { "Content-Type": "application/json" } }
+        { headers: { "Content-Type": "application/json" } },
       );
 
       if (response.data) {
@@ -192,20 +232,18 @@ const TaxCalculator: React.FC = () => {
       }
     } catch (err) {
       setError(
-        "Không thể kết nối đến server tính toán. Vui lòng kiểm tra lại mạng hoặc cấu hình API."
+        "Không thể kết nối đến server tính toán AI. Vui lòng kiểm tra lại mạng hoặc cấu hình API.",
       );
-      console.error(err);
+      console.error("Groq API Error:", err);
     } finally {
       setLoading(false);
+      setSearchStatus("");
     }
   };
 
-  // --- GIAO DIỆN (JSX) ---
   return (
-    // [CẬP NHẬT] Thêm prop locale={viVN} vào ConfigProvider
     <ConfigProvider theme={themeConfig} locale={viVN}>
       <Layout style={{ minHeight: "100vh", background: "transparent" }}>
-        {/* Header - Thiết kế vát chéo */}
         <div
           style={{
             background: "#1a365d",
@@ -219,7 +257,7 @@ const TaxCalculator: React.FC = () => {
             style={{ color: "#fff", margin: 0, letterSpacing: "1px" }}
           >
             <BankOutlined style={{ marginRight: 15, color: "#c5a572" }} />
-            CỔNG THÔNG TIN TÍNH THUẾ TNCN
+            CỔNG TÍNH THUẾ TNCN THÔNG MINH
           </Title>
           <Text
             style={{
@@ -229,7 +267,7 @@ const TaxCalculator: React.FC = () => {
               display: "block",
             }}
           >
-            Hỗ trợ tính toán chính xác theo từng kỳ thuế
+            Hệ thống tự động tra cứu luật thuế mới nhất theo thời gian thực
           </Text>
         </div>
 
@@ -244,7 +282,6 @@ const TaxCalculator: React.FC = () => {
               display: "flex",
             }}
           >
-            {/* --- KHU VỰC NHẬP LIỆU (REDESIGNED) --- */}
             <Card
               className="legal-paper"
               title={
@@ -266,7 +303,6 @@ const TaxCalculator: React.FC = () => {
                 }}
                 size="large"
               >
-                {/* NHÓM 1: CẤU HÌNH CƠ BẢN (THỜI GIAN & CON NGƯỜI) */}
                 <div style={sectionStyle}>
                   <Row gutter={24}>
                     <Col xs={24} md={12}>
@@ -280,7 +316,7 @@ const TaxCalculator: React.FC = () => {
                       >
                         <DatePicker
                           picker="month"
-                          format="MM/YYYY" // Định dạng hiển thị kiểu Việt Nam
+                          format="MM/YYYY"
                           style={{ width: "100%", height: 50, borderRadius: 8 }}
                           placeholder="Chọn tháng/năm"
                           suffixIcon={
@@ -292,8 +328,8 @@ const TaxCalculator: React.FC = () => {
                         type="secondary"
                         style={{ fontSize: 12, marginTop: 4, display: "block" }}
                       >
-                        *Hệ thống tự động áp dụng luật thuế tương ứng thời điểm
-                        này.
+                        *AI sẽ tự động quét Internet để tìm luật tương ứng với
+                        thời điểm này.
                       </Text>
                     </Col>
 
@@ -321,14 +357,12 @@ const TaxCalculator: React.FC = () => {
                         type="secondary"
                         style={{ fontSize: 12, marginTop: 4, display: "block" }}
                       >
-                        *Giảm trừ theo luật hiện hành (VD: 4.4tr hoặc
-                        6.2tr/người).
+                        *Số người phụ thuộc hợp lệ đã đăng ký mã số thuế.
                       </Text>
                     </Col>
                   </Row>
                 </div>
 
-                {/* NHÓM 2: TÀI CHÍNH (THU NHẬP) */}
                 <div
                   style={{
                     ...sectionStyle,
@@ -337,7 +371,6 @@ const TaxCalculator: React.FC = () => {
                   }}
                 >
                   <Row gutter={24}>
-                    {/* Thu nhập - Hero Input */}
                     <Col xs={24}>
                       <span
                         style={{
@@ -390,12 +423,11 @@ const TaxCalculator: React.FC = () => {
                   </Row>
                 </div>
 
-                {/* Submit Button */}
                 <Form.Item style={{ marginTop: 30, marginBottom: 0 }}>
                   <Button
                     type="primary"
                     htmlType="submit"
-                    icon={<RocketOutlined />}
+                    icon={loading ? null : <RocketOutlined />}
                     loading={loading}
                     block
                     size="large"
@@ -409,16 +441,15 @@ const TaxCalculator: React.FC = () => {
                       border: "none",
                     }}
                   >
-                    {loading ? "ĐANG TÍNH TOÁN..." : "TÍNH THUẾ NGAY"}
+                    {searchStatus || "TÍNH THUẾ NGAY"}
                   </Button>
                 </Form.Item>
               </Form>
             </Card>
 
-            {/* --- KHU VỰC HIỂN THỊ LỖI --- */}
             {error && (
               <Alert
-                message="Thông báo lỗi"
+                message="Thông báo hệ thống"
                 description={error}
                 type="error"
                 showIcon
@@ -427,50 +458,48 @@ const TaxCalculator: React.FC = () => {
               />
             )}
 
-            {/* --- KHU VỰC KẾT QUẢ (REPORT) --- */}
             {result && (
               <div className="fade-in-up">
-                <Badge.Ribbon text="Official Report" color="#c5a572">
+                <Badge.Ribbon text="Live Data Report" color="#c5a572">
                   <Card
                     className="legal-paper"
                     bordered={false}
                     title={
                       <div style={{ textAlign: "center", width: "100%" }}>
-                        KẾT QUẢ TÍNH TOÁN
+                        BÁO CÁO CHI TIẾT
                       </div>
                     }
                     style={{ minHeight: 200 }}
                   >
-                    <Spin spinning={loading} tip="Đang phân tích dữ liệu...">
-                      <div className="markdown-body">
-                        <ReactMarkdown
-                          remarkPlugins={[remarkGfm, remarkMath]}
-                          rehypePlugins={[rehypeRaw, rehypeKatex]}
-                          components={{
-                            table: ({ node, ...props }) => <table {...props} />,
-                            th: ({ node, ...props }) => <th {...props} />,
-                            td: ({ node, ...props }) => <td {...props} />,
-                          }}
-                        >
-                          {preprocessContent(result)}
-                        </ReactMarkdown>
-                      </div>
-
-                      <Divider />
-                      <div
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          color: "#a0aec0",
-                          fontSize: "12px",
+                    <div className="markdown-body">
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm, remarkMath]}
+                        rehypePlugins={[rehypeRaw, rehypeKatex]}
+                        components={{
+                          table: ({ node, ...props }) => <table {...props} />,
+                          th: ({ node, ...props }) => <th {...props} />,
+                          td: ({ node, ...props }) => <td {...props} />,
                         }}
                       >
-                        <span>Mô hình xử lý: {usedModel}</span>
-                        <span>
-                          Ngày lập: {new Date().toLocaleDateString("vi-VN")}
-                        </span>
-                      </div>
-                    </Spin>
+                        {preprocessContent(result)}
+                      </ReactMarkdown>
+                    </div>
+                    <Divider />
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        color: "#a0aec0",
+                        fontSize: "12px",
+                      }}
+                    >
+                      <span>
+                        AI Model: {usedModel} (Tích hợp Tavily Web Search)
+                      </span>
+                      <span>
+                        Thời gian lập: {new Date().toLocaleString("vi-VN")}
+                      </span>
+                    </div>
                   </Card>
                 </Badge.Ribbon>
               </div>
@@ -488,7 +517,7 @@ const TaxCalculator: React.FC = () => {
           Vietnam Personal Income Tax Calculator ©{new Date().getFullYear()}{" "}
           <br />
           <Text type="secondary" style={{ fontSize: 12 }}>
-            Designed for Professionals
+            Powered by React & AI
           </Text>
         </Footer>
       </Layout>
