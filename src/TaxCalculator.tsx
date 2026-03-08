@@ -215,6 +215,7 @@ const TaxCalculator: React.FC = () => {
       [QUAN TRỌNG] Quy tắc hiển thị công thức toán học:
       - BẮT BUỘC sử dụng dấu $$ bao quanh công thức (Ví dụ: $$ a + b = c $$).
       - TUYỆT ĐỐI KHÔNG sử dụng ký hiệu \\[ hoặc \\] hoặc ( ).
+      - BẮT BUỘC sử dụng tiếng Việt có dấu, không được viết tắt hay dùng tiếng Anh trong phần giải thích.
     `;
 
     // BƯỚC 3: Gọi API AI (Netlify Function / Groq)
